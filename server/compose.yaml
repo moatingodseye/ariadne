@@ -1,0 +1,60 @@
+# Ariadne with docker compose (or podman-compose) - the same three containers
+# run-ariadne.sh starts, for a box that runs docker rather than podman.
+#
+#   docker load -i ariadne-api-0.33.1.tar.gz
+#   docker load -i ariadne-web-0.33.1.tar.gz
+#   cp ariadne.env.example ariadne.env      # set the paths AND ARIADNE_SECRET
+#   docker compose --env-file ariadne.env up -d
+#   curl http://localhost:8193/api/health
+#
+# Unlike run-ariadne.sh this cannot generate ARIADNE_SECRET for you. Make one
+# ONCE and keep it - every stored database password is sealed with it:
+#   openssl rand -hex 32
+name: ariadne
+
+services:
+  ariadne-db:
+    image: ${ARIADNE_PG_IMAGE:-docker.io/pgvector/pgvector:pg16}
+    restart: ${ARIADNE_RESTART:-no}
+    environment:
+      POSTGRES_DB: ariadne
+      POSTGRES_USER: ariadne
+      POSTGRES_PASSWORD: ariadne
+    volumes:
+      - ${ARIADNE_DB_DATA:-/var/lib/ariadne/db}:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ariadne"]
+      interval: 2s
+      retries: 45
+
+  # The service NAME matters: ariadne-web's nginx proxies to
+  # http://ariadne-api:8090, so this must stay called ariadne-api.
+  ariadne-api:
+    image: localhost/ariadne-api:0.33.1
+    restart: ${ARIADNE_RESTART:-no}
+    depends_on:
+      ariadne-db:
+        condition: service_healthy
+    ports:
+      - "${ARIADNE_API_PORT:-8192}:8090"
+    environment:
+      DB_HOST: ariadne-db
+      DB_PORT: "5432"
+      DB_NAME: ariadne
+      DB_USER: ariadne
+      DB_PASSWORD: ariadne
+      SOURCE_ROOT: /srv/ariadne/source
+      ARIADNE_SECRET: ${ARIADNE_SECRET:?set ARIADNE_SECRET in ariadne.env - openssl rand -hex 32}
+      ARIADNE_ADAPTER_KEY: ${ARIADNE_ADAPTER_KEY:-}
+    volumes:
+      - ${ARIADNE_SOURCE:-/var/lib/ariadne/source}:/srv/ariadne/source
+
+  # No depends_on, deliberately: podman-compose 1.0.6 turns it into transitive
+  # --requires links that podman 4.9 then refuses to resolve, and the web
+  # container never starts. Listed after ariadne-api, it starts after it anyway.
+  ariadne-web:
+    image: localhost/ariadne-web:0.33.1
+    restart: ${ARIADNE_RESTART:-no}
+    ports:
+      - "${ARIADNE_WEB_PORT:-8193}:8080"
