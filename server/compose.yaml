@@ -1,8 +1,8 @@
 # Ariadne with docker compose (or podman-compose) - the same three containers
 # run-ariadne.sh starts, for a box that runs docker rather than podman.
 #
-#   docker load -i ariadne-api-0.34.1.tar.gz
-#   docker load -i ariadne-web-0.34.1.tar.gz
+#   docker load -i ariadne-api-0.34.5.tar.gz
+#   docker load -i ariadne-web-0.34.5.tar.gz
 #   cp ariadne.env.example ariadne.env      # set the paths AND ARIADNE_SECRET
 #   docker compose --env-file ariadne.env up -d
 #   curl http://localhost:8193/api/health
@@ -31,7 +31,7 @@ services:
   # The service NAME matters: ariadne-web's nginx proxies to
   # http://ariadne-api:8090, so this must stay called ariadne-api.
   ariadne-api:
-    image: localhost/ariadne-api:0.34.1
+    image: localhost/ariadne-api:0.34.5
     restart: ${ARIADNE_RESTART:-no}
     depends_on:
       ariadne-db:
@@ -54,7 +54,7 @@ services:
   # --requires links that podman 4.9 then refuses to resolve, and the web
   # container never starts. Listed after ariadne-api, it starts after it anyway.
   ariadne-web:
-    image: localhost/ariadne-web:0.34.1
+    image: localhost/ariadne-web:0.34.5
     restart: ${ARIADNE_RESTART:-no}
     ports:
       - "${ARIADNE_WEB_PORT:-8193}:8080"
