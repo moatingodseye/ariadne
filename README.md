@@ -88,6 +88,8 @@ claude mcp add ariadne -- D:\tool\ariadne_mcp.exe --url=http://<server>:8193
 | **Explorer** — every symbol, filtered by kind and visibility | **A symbol** — where it is, its metrics, and what uses it |
 | ![Architecture](docs/screens/architecture.png) | ![Quality](docs/screens/quality.png) |
 | **Architecture** — what the project holds, by kind | **Quality** — findings split by what they claim, and the complexity distribution |
+| ![A function's flowchart](docs/screens/diagram-flowchart.png) | ![A class diagram](docs/screens/diagram-class.png) |
+| **Diagrams** — a function's control flow, drawn from its body | **Diagrams** — a class and its members |
 
 ![Findings](docs/screens/findings.png)
 
