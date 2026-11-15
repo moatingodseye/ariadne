@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION=0.35.0
+VERSION=0.36.0
 ENV_FILE="${ARIADNE_ENV:-./ariadne.env}"
 
 # ── settings ────────────────────────────────────────────────────────────────
@@ -75,7 +75,22 @@ for img in ariadne-api ariadne-web; do
 done
 
 echo "==> network"
-podman network exists "$NAME-net" || podman network create "$NAME-net" >/dev/null
+# **Addresses, not names.** The three containers reach each other by fixed IP
+# on this network, and no hop goes through container DNS. On a new network
+# podman's aardvark-dns (1.4.0, measured 2026-11-14, todo #562) stopped
+# answering names for ~40 s once a container joined, while TCP to the same IP
+# worked on every try - and the release proof's first index died in that
+# window. So the network is made without DNS, and an older one that has it is
+# simply not asked.
+podman network exists "$NAME-net" || podman network create --disable-dns "$NAME-net" >/dev/null
+SUBNET="$(podman network inspect "$NAME-net" -f '{{range .Subnets}}{{.Subnet}} {{end}}' | awk '{print $1}')"
+case "$SUBNET" in
+  *.*.*.*/[0-9]|*.*.*.*/1[0-9]|*.*.*.*/2[0-4]) ;;
+  *) echo "FAIL: $NAME-net has subnet '$SUBNET'; this needs an IPv4 /24 or wider" >&2; exit 2 ;;
+esac
+NET3="${SUBNET%.*}"          # 10.89.4.0/24 -> 10.89.4
+DB_IP="$NET3.250"; API_IP="$NET3.251"; WEB_IP="$NET3.252"
+echo "    $SUBNET: db $DB_IP, api $API_IP, web $WEB_IP"
 
 echo "==> postgres"
 if ! podman image exists "$PG_IMAGE"; then
@@ -86,7 +101,7 @@ mkdir -p "$DB_DATA" "$SOURCE_DIR"
 # **Recreated, never rebuilt from nothing.** The data lives in $DB_DATA on the
 # host, so removing the container is not removing the database.
 podman rm -f "$NAME-db" >/dev/null 2>&1 || true
-podman run -d --name "$NAME-db" --network "$NAME-net" --restart "$RESTART" \
+podman run -d --name "$NAME-db" --network "$NAME-net" --ip "$DB_IP" --restart "$RESTART" \
   -e POSTGRES_DB=ariadne -e POSTGRES_USER=ariadne -e POSTGRES_PASSWORD=ariadne \
   -v "$DB_DATA":/var/lib/postgresql/data:U \
   -v "$PWD/init.sql":/docker-entrypoint-initdb.d/init.sql:ro \
@@ -101,14 +116,9 @@ podman exec "$NAME-db" pg_isready -U ariadne >/dev/null 2>&1 \
 
 echo "==> ariadne-api"
 podman rm -f "$NAME-api" >/dev/null 2>&1 || true
-podman run -d --name "$NAME-api" --network "$NAME-net" --restart "$RESTART" \
+podman run -d --name "$NAME-api" --network "$NAME-net" --ip "$API_IP" --restart "$RESTART" \
   -p "${API_PORT}:8090" \
-  `# ariadne-web's nginx has "http://ariadne-api:8090" compiled into its` \
-  `# config, so a renamed API container would be unreachable from it. The` \
-  `# alias keeps that name resolvable whatever the container is called; on an` \
-  `# ordinary deployment it is simply the same word twice.` \
-  --network-alias ariadne-api \
-  -e DB_HOST="$NAME-db" -e DB_PORT=5432 \
+  -e DB_HOST="$DB_IP" -e DB_PORT=5432 \
   -e DB_NAME=ariadne -e DB_USER=ariadne -e DB_PASSWORD=ariadne \
   -e SOURCE_ROOT=/srv/ariadne/source \
   -e ARIADNE_SECRET="$ARIADNE_SECRET" \
@@ -119,8 +129,9 @@ podman run -d --name "$NAME-api" --network "$NAME-net" --restart "$RESTART" \
 
 echo "==> ariadne-web"
 podman rm -f "$NAME-web" >/dev/null 2>&1 || true
-podman run -d --name "$NAME-web" --network "$NAME-net" --restart "$RESTART" \
+podman run -d --name "$NAME-web" --network "$NAME-net" --ip "$WEB_IP" --restart "$RESTART" \
   -p "${WEB_PORT}:8080" --log-opt max-size=10mb \
+  -e ARIADNE_API_UPSTREAM="http://$API_IP:8090" \
   "ariadne-web:$VERSION" >/dev/null
 
 # ── prove it, rather than announce it ───────────────────────────────────────

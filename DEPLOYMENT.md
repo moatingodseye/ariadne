@@ -1,4 +1,4 @@
-# Ariadne 0.35.0 — deployment
+# Ariadne 0.36.0 — deployment
 
 Everything needed to run Ariadne on one box and point clients at it. **No source,
 no Dart SDK and no build step** are required anywhere: the two application images
@@ -12,8 +12,8 @@ The scripts are in this repository; the binaries are attached to the matching
 ariadne/
   DEPLOYMENT.md                  this file
   server/
-    ariadne-api-0.35.0.tar.gz    release asset - the API + MCP service   (~66 MB)
-    ariadne-web-0.35.0.tar.gz    release asset - the UI and /api proxy   (~40 MB)
+    ariadne-api-0.36.0.tar.gz    release asset - the API + MCP service   (~66 MB)
+    ariadne-web-0.36.0.tar.gz    release asset - the UI and /api proxy   (~40 MB)
     init.sql                     runs once, on first database creation
     ariadne.env.example          copy to ariadne.env and edit
     run-ariadne.sh               loads, starts, and PROVES it answered
@@ -30,7 +30,7 @@ ariadne/
 `SHA256SUMS` on the release lists a checksum for every asset:
 `sha256sum -c SHA256SUMS --ignore-missing` after downloading.
 
-Version **0.35.0+0**. The exact commit is baked into the images — ask the running
+Version **0.36.0+0**. The exact commit is baked into the images — ask the running
 server with `curl http://<box>:8193/api/version`, and the release notes it was
 built from are in `/app/changes.log` inside `ariadne-api`.
 
@@ -45,6 +45,11 @@ Three containers on one podman network:
 | `ariadne-db` | stock `pgvector/pgvector:pg16`, data bind-mounted to the host | none published |
 | `ariadne-api` | the service: REST + MCP, and a live feed on 8091 | 8192 → 8090 |
 | `ariadne-web` | nginx serving the UI and proxying `/api` and `/ws` | **8193** → 8080 |
+
+They reach each other by **fixed address, never by name**: `.250`, `.251` and
+`.252` on the network's own subnet (`run-ariadne.sh` reads it from podman;
+compose uses `ARIADNE_NET`, default `10.89.250`). Container DNS is not on any
+path — under podman it was measured dropping names for ~40 s on a new network.
 
 **`:8193` is the only port clients need.** `:8192` is the API direct; firewall it
 off if you like, nothing depends on it being reachable from elsewhere.
@@ -125,8 +130,8 @@ three containers from the same `ariadne.env`:
 
 ```bash
 cd server
-docker load -i ariadne-api-0.35.0.tar.gz
-docker load -i ariadne-web-0.35.0.tar.gz
+docker load -i ariadne-api-0.36.0.tar.gz
+docker load -i ariadne-web-0.36.0.tar.gz
 cp ariadne.env.example ariadne.env
 openssl rand -hex 32          # paste into ARIADNE_SECRET - once, and back it up
 $EDITOR ariadne.env

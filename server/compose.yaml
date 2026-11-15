@@ -1,8 +1,8 @@
 # Ariadne with docker compose (or podman-compose) - the same three containers
 # run-ariadne.sh starts, for a box that runs docker rather than podman.
 #
-#   docker load -i ariadne-api-0.35.0.tar.gz
-#   docker load -i ariadne-web-0.35.0.tar.gz
+#   docker load -i ariadne-api-0.36.0.tar.gz
+#   docker load -i ariadne-web-0.36.0.tar.gz
 #   cp ariadne.env.example ariadne.env      # set the paths AND ARIADNE_SECRET
 #   docker compose --env-file ariadne.env up -d
 #   curl http://localhost:8193/api/health
@@ -23,15 +23,18 @@ services:
     volumes:
       - ${ARIADNE_DB_DATA:-/var/lib/ariadne/db}:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      ariadne-net:
+        ipv4_address: ${ARIADNE_NET:-10.89.250}.250
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ariadne"]
       interval: 2s
       retries: 45
 
-  # The service NAME matters: ariadne-web's nginx proxies to
-  # http://ariadne-api:8090, so this must stay called ariadne-api.
+  # Containers reach each other by these fixed addresses, never by name: no
+  # hop goes through container DNS (measured flaky under podman, todo #562).
   ariadne-api:
-    image: localhost/ariadne-api:0.35.0
+    image: localhost/ariadne-api:0.36.0
     restart: ${ARIADNE_RESTART:-no}
     depends_on:
       ariadne-db:
@@ -39,7 +42,7 @@ services:
     ports:
       - "${ARIADNE_API_PORT:-8192}:8090"
     environment:
-      DB_HOST: ariadne-db
+      DB_HOST: ${ARIADNE_NET:-10.89.250}.250
       DB_PORT: "5432"
       DB_NAME: ariadne
       DB_USER: ariadne
@@ -49,12 +52,26 @@ services:
       ARIADNE_ADAPTER_KEY: ${ARIADNE_ADAPTER_KEY:-}
     volumes:
       - ${ARIADNE_SOURCE:-/var/lib/ariadne/source}:/srv/ariadne/source
+    networks:
+      ariadne-net:
+        ipv4_address: ${ARIADNE_NET:-10.89.250}.251
 
   # No depends_on, deliberately: podman-compose 1.0.6 turns it into transitive
   # --requires links that podman 4.9 then refuses to resolve, and the web
   # container never starts. Listed after ariadne-api, it starts after it anyway.
   ariadne-web:
-    image: localhost/ariadne-web:0.35.0
+    image: localhost/ariadne-web:0.36.0
     restart: ${ARIADNE_RESTART:-no}
     ports:
       - "${ARIADNE_WEB_PORT:-8193}:8080"
+    environment:
+      ARIADNE_API_UPSTREAM: http://${ARIADNE_NET:-10.89.250}.251:8090
+    networks:
+      ariadne-net:
+        ipv4_address: ${ARIADNE_NET:-10.89.250}.252
+
+networks:
+  ariadne-net:
+    ipam:
+      config:
+        - subnet: ${ARIADNE_NET:-10.89.250}.0/24
