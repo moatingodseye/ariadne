@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION=0.36.0
+VERSION=0.36.1
 ENV_FILE="${ARIADNE_ENV:-./ariadne.env}"
 
 # ── settings ────────────────────────────────────────────────────────────────
